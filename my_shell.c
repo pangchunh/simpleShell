@@ -41,21 +41,6 @@ char **tokenize(char *line)
   return tokens;
 }
 
-/**
- * Extract the options/arguments for the command supplied.
- * @param tokens
- * @return an array of argument with NULL at the end
- */
-char **getOptions(char **tokens){
-    char **options = (char **) malloc(sizeof tokens);
-    int arr_length = sizeof (tokens) / sizeof (tokens[0]);
-    for (int i = 0; i < arr_length - 1; i++) {
-        options[i] = tokens[i + 1];
-    }
-    options[arr_length] = NULL;
-    return options;
-}
-
 int changeDirectory(char **tokens){
     char path[MAX_TOKEN_SIZE];
     strcpy(path, tokens[1]);
@@ -99,8 +84,6 @@ int main(int argc, char* argv[]) {
 		fprintf(stdout, "%s $ ", cwd);
 		scanf("%[^\n]", line);
 		getchar();
-
-		printf("Command entered: %s (remove this debug output later)\n", line);
 		/* END: TAKING INPUT */
 
 		line[strlen(line)] = '\n'; //terminate with new line
