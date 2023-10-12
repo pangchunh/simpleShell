@@ -1,10 +1,8 @@
 #include  <stdio.h>
-#include  <sys/types.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <sys/wait.h>
-#include <string.h>
 
 
 #define MAX_INPUT_SIZE 1024
@@ -43,12 +41,42 @@ char **tokenize(char *line)
 
 int changeDirectory(char **tokens){
     char path[MAX_TOKEN_SIZE];
+
+    int tokens_length = 0;
+    while (tokens[tokens_length] != NULL) {
+        tokens_length++;
+    }
+    if (tokens_length < 2){
+        printf("Shell: Incorrect command\n");
+        return -1;
+    }
     strcpy(path, tokens[1]);
     if (chdir(path) != 0){
         perror("Shell: Incorrect command");
         return -1;
     }
     return 0;
+}
+
+int executeBackGroundProcess(char **tokens){
+    char command[MAX_TOKEN_SIZE];
+    snprintf(command, sizeof command, "/bin/%s", tokens[0]);
+    int rc = fork();
+    if (rc < 0){
+        perror("Fork failed");
+        return -1;
+    } else if (rc == 0){
+        close(STDIN_FILENO);
+        close(STDOUT_FILENO);
+        close(STDERR_FILENO);
+
+        execv(command, tokens);
+        perror("Error execv");
+        exit(1);
+    } else{
+        printf("Child process running in background with PID %d\n", rc);
+        return rc;
+    }
 }
 
 /**
@@ -67,14 +95,39 @@ int executeBasic(char **tokens){
         execv(command, tokens);
         perror("Exec failed");
     } else{
-        wait(NULL);
+        int status;
+        waitpid(rc, &status, 0);
     }
+    return 0;
+}
+
+void reapTerminatedBackgroundProcess(pid_t background_pids[], int *num_background_pids){
+    int num_active_background_pids = 0;
+
+    printf("Number of background process %d\n", *num_background_pids);
+
+    for(int i = 0; i < *num_background_pids; i++){
+        pid_t bg_pid = background_pids[i];
+        int status;
+        int result = waitpid(bg_pid, &status, WNOHANG);
+
+        if (result > 0){
+            printf("Shell: Background process finished.\n");
+            }
+        else{
+            background_pids[num_active_background_pids] = bg_pid;
+            num_active_background_pids++;
+        }
+    }
+    *num_background_pids = num_active_background_pids;
 }
 
 int main(int argc, char* argv[]) {
 	char  line[MAX_INPUT_SIZE];            
 	char  **tokens;              
 	int i;
+    pid_t background_pids[MAX_TOKEN_SIZE];
+    int num_background_pids = 0;
 
 	while(1) {			
 		/* BEGIN: TAKING INPUT */
@@ -89,10 +142,24 @@ int main(int argc, char* argv[]) {
 		line[strlen(line)] = '\n'; //terminate with new line
 		tokens = tokenize(line);
 
+        int tokens_length = 0;
+        while (tokens[tokens_length] != NULL) {
+            tokens_length++;
+        }
+
+        /* Reap terminated background process */
+        reapTerminatedBackgroundProcess(background_pids, &num_background_pids);
+
         /* Main execution logic */
         if (strcmp(tokens[0], "cd") == 0){
             changeDirectory(tokens);
-        } else{
+        } else if (strcmp(tokens[tokens_length - 1], "&") == 0){
+            tokens[tokens_length - 1] = NULL;
+            int background_pid = executeBackGroundProcess(tokens);
+            background_pids[num_background_pids] = background_pid;
+            num_background_pids++;
+        }
+        else{
             executeBasic(tokens);
         }
 
