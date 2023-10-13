@@ -3,6 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <signal.h>
 
 
 #define MAX_INPUT_SIZE 1024
@@ -101,6 +102,16 @@ int executeBasic(char **tokens){
     return 0;
 }
 
+void killAllBackgroundProcess(pid_t background_pids[], int num_background_pids){
+    for(int i = 0; i < num_background_pids; i++){
+        kill(background_pids[i], SIGTERM);
+        int status;
+        waitpid(background_pids[i], &status, 0);
+    }
+
+}
+
+
 void reapTerminatedBackgroundProcess(pid_t background_pids[], int *num_background_pids){
     int num_active_background_pids = 0;
 
@@ -159,6 +170,11 @@ int main(int argc, char* argv[]) {
             background_pids[num_background_pids] = background_pid;
             num_background_pids++;
         }
+        else if (strcmp(tokens[0], "exit") == 0){
+            printf("Thank you for using my shell\n");
+            killAllBackgroundProcess(background_pids, num_background_pids);
+            break;
+        }
         else{
             executeBasic(tokens);
         }
@@ -172,5 +188,6 @@ int main(int argc, char* argv[]) {
 	}
 	return 0;
 }
+
 
 
