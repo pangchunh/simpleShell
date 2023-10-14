@@ -9,6 +9,9 @@
 #define MAX_INPUT_SIZE 1024
 #define MAX_TOKEN_SIZE 64
 #define MAX_NUM_TOKENS 64
+#define MAX_NUM_COMMAND 64
+
+pid_t foreground_pid  = 0;
 
 /* Splits the string by space and returns the array of tokens
 *
@@ -75,6 +78,7 @@ int executeBackGroundProcess(char **tokens){
         perror("Error execv");
         exit(1);
     } else{
+        setpgid(rc, rc);
         printf("Child process running in background with PID %d\n", rc);
         return rc;
     }
@@ -93,13 +97,15 @@ int executeBasic(char **tokens){
         perror("Fork failed");
         return -1;
     } else if (rc == 0){
+        setpgid(0,0); //create a new process group
         execv(command, tokens);
         perror("Exec failed");
     } else{
         int status;
+        foreground_pid = rc;
         waitpid(rc, &status, 0);
     }
-    return 0;
+    return rc;
 }
 
 void killAllBackgroundProcess(pid_t background_pids[], int num_background_pids){
@@ -133,12 +139,22 @@ void reapTerminatedBackgroundProcess(pid_t background_pids[], int *num_backgroun
     *num_background_pids = num_active_background_pids;
 }
 
+void signalHandler(){
+    if(foreground_pid > 0){
+        printf("\nCaught SIGINT signal, terminating foreground process\n");
+        kill(-foreground_pid, SIGINT);
+    }
+
+}
+
+
 int main(int argc, char* argv[]) {
 	char  line[MAX_INPUT_SIZE];            
 	char  **tokens;              
 	int i;
     pid_t background_pids[MAX_TOKEN_SIZE];
     int num_background_pids = 0;
+    signal(SIGINT, signalHandler);
 
 	while(1) {			
 		/* BEGIN: TAKING INPUT */
@@ -173,10 +189,35 @@ int main(int argc, char* argv[]) {
         else if (strcmp(tokens[0], "exit") == 0){
             printf("Thank you for using my shell\n");
             killAllBackgroundProcess(background_pids, num_background_pids);
-            break;
+            for(i=0;tokens[i]!=NULL;i++){
+                free(tokens[i]);
+            }
+            free(tokens);
+            exit(0);
         }
         else{
+            //go through each token and push to the token queue. If the token is &&, save the next series of tokens into the next position
+            char token_queue[MAX_NUM_COMMAND][MAX_INPUT_SIZE];
+            int current_queue_index = 0;
+            int current_token_index = 0;
+
+            for(int i = 0; tokens[i] != NULL; i++){
+                if (strcmp(tokens[i], "&&") != 0){
+                    token_queue[current_queue_index][current_token_index] = tokens[i];
+                    current_token_index++;
+                } else{
+                    current_queue_index++;
+                    current_token_index = 0;
+                }
+            }
+            for (int i = 0; i <= current_queue_index; i++) {
+                for (int j = 0; token_queue[i][j] != NULL; j++) {
+                    printf("\"%c\" ", token_queue[i][j]);
+                }
+                printf("\n");
+            }
             executeBasic(tokens);
+
         }
 
         // Freeing the allocated memory
